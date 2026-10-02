@@ -8,7 +8,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { insertMealSchema } from "@shared/schema";
 import type { RecipeImportPreview } from "@shared/recipe-import";
-import { parseRecipeIngredient } from "./recipe-ingredients";
+import { parseRecipeIngredientDetails } from "./recipe-ingredients";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 15000;
@@ -125,11 +125,13 @@ export function extractRecipe(html: string, sourceUrl: string): RecipeImportPrev
     encoded('script, style').remove();
     encoded('br').replaceWith('\n');
     encoded('p, li').append('\n');
+    encoded('span[style*="display: block"]').append('\n');
     const decoded = encoded('div').first().text();
     const fragment = load(decoded);
     fragment('script, style').remove();
     fragment('br').replaceWith('\n');
     fragment('p, li').append('\n');
+    fragment('span[style*="display: block"]').append('\n');
     return fragment.root().text().replace(/\r/g, '').trim();
   };
   const recipes: JsonObject[] = [];
@@ -159,8 +161,34 @@ export function extractRecipe(html: string, sourceUrl: string): RecipeImportPrev
     return steps(value.text || value.name);
   };
   const ingredientLines = steps(recipe.recipeIngredient);
-  const ingredients = ingredientLines.map(parseRecipeIngredient);
-  const instructions = steps(recipe.recipeInstructions);
+  const ingredientDetails = ingredientLines.map(parseRecipeIngredientDetails);
+  const ingredients = ingredientDetails.map(detail => detail.ingredient);
+  let instructionData = recipe.recipeInstructions;
+  if (Array.isArray(instructionData) && instructionData.some(section => object(section) && /^full\s+(recipe|method|instructions?)\b/i.test(clean(section.name)))) {
+    instructionData = instructionData.filter(section => !object(section) || !/^(abbreviated|summary|quick)\s+(recipe|method|instructions?)\b/i.test(clean(section.name)));
+    warnings.push("The abbreviated method was omitted because the full method is available.");
+  }
+  const instructions = steps(instructionData);
+  const methodStepCount = instructions.length;
+  const ingredientNotes = ingredientDetails.flatMap(({ ingredient, notes }) => notes.map(note => `${ingredient.name}: ${note}`));
+  if (ingredientNotes.length) {
+    instructions.push(`Ingredient notes:\n${ingredientNotes.join('\n')}`);
+    warnings.push("Long ingredient explanations and substitutions were moved to the end of the instructions; short preparation and optional flags stay with the ingredient.");
+  }
+  // WPRM cards are used by many recipe sites. Only take notes from the card
+  // matching the chosen recipe; never accidentally pull notes from a related recipe.
+  $('.wprm-recipe-container').each((_index, card) => {
+    if (clean($(card).find('.wprm-recipe-name').first().text()).toLowerCase() !== clean(recipe.name).toLowerCase()) return;
+    if (instructions.some(step => step.startsWith('Recipe notes:'))) return;
+    const notesElement = $(card).find('.wprm-recipe-notes').first();
+    if (!notesElement.length) return;
+    const notes = clean(notesElement.html() || '').split('\n').map(line => line.trim())
+      .filter(line => line && !/^nutrition\b/i.test(line));
+    if (notes.length) {
+      instructions.push(`Recipe notes:\n${notes.join('\n')}`);
+      warnings.push("Recipe-card cooking notes were included at the end of the instructions. Review them before saving.");
+    }
+  });
   const duration = clean(recipe.cookTime);
   const match = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i.exec(duration);
   const minutes = match ? Number(match[1] || 0) * 1440 + Number(match[2] || 0) * 60 + Number(match[3] || 0) + Number(match[4] || 0) / 60 : 0;
@@ -185,7 +213,7 @@ export function extractRecipe(html: string, sourceUrl: string): RecipeImportPrev
     ingredients,
     instructions, utensils: [],
   });
-  for (const [label, value] of [['name', draft.name], ['description', draft.description], ['cook time', cookTime], ['image', draft.image], ['ingredients', ingredientLines.length], ['instructions', instructions.length]] as const) {
+  for (const [label, value] of [['name', draft.name], ['description', draft.description], ['cook time', cookTime], ['image', draft.image], ['ingredients', ingredientLines.length], ['instructions', methodStepCount]] as const) {
     if (!value) warnings.push(`No ${label} was found. Complete it in the form if required.`);
   }
   warnings.push("Review ingredient amounts and suggested shopping categories; uncertain categories remain other.");
