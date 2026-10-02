@@ -8,7 +8,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { insertMealSchema } from "@shared/schema";
 import type { RecipeImportPreview } from "@shared/recipe-import";
-import { parseRecipeIngredientDetails } from "./recipe-ingredients";
+import { parseRecipeIngredientDetails, preferMetricMeasurements } from "./recipe-ingredients";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 15000;
@@ -132,7 +132,7 @@ export function extractRecipe(html: string, sourceUrl: string): RecipeImportPrev
     fragment('br').replaceWith('\n');
     fragment('p, li').append('\n');
     fragment('span[style*="display: block"]').append('\n');
-    return fragment.root().text().replace(/\r/g, '').trim();
+    return preferMetricMeasurements(fragment.root().text().replace(/\r/g, '').trim());
   };
   const recipes: JsonObject[] = [];
   const visit = (value: unknown, depth = 0) => {

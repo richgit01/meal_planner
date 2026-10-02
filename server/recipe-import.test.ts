@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 import type { request as httpRequest } from 'node:http';
 import { extractRecipe, fetchRecipePage, isPublicAddress, registerRecipeImportRoute, validateRecipeUrl } from './recipe-import';
 import { insertMealSchema } from '../shared/schema';
-import { parseRecipeIngredient, parseRecipeIngredientDetails } from './recipe-ingredients';
+import { parseRecipeIngredient, parseRecipeIngredientDetails, preferMetricMeasurements } from './recipe-ingredients';
 
 const page = (recipe: unknown) => `<html><script type="application/ld+json">${JSON.stringify(recipe)}</script></html>`;
 const recipe = {
@@ -64,7 +64,7 @@ test('normalizes BBC-style compact amounts, preparation, and shopping categories
 
 test('handles equivalent units, additive amounts, aliases and recipe-card note wrappers', () => {
   const examples = [
-    ['600g/1.2 lb boneless skinless chicken thighs or breast (, cut into pieces)', 'boneless skinless chicken thighs or breast (cut into pieces)', '600g / 1.2 lb', 'meat'],
+    ['600g/1.2 lb boneless skinless chicken thighs or breast (, cut into pieces)', 'boneless skinless chicken thighs or breast (cut into pieces)', '600g', 'meat'],
     ['1/3 cup + 2 tbsp white sugar', 'white sugar', '1/3 cup + 2 tbsp', 'pantry'],
     ['3/4 - 1 cup vegetable oil (, or other plain oil)', 'vegetable oil (or other plain oil)', '3/4 - 1 cup', 'pantry'],
     ['2 tbsp cornflour / cornstarch (- for mixing)', 'cornflour / cornstarch (for mixing)', '2 tbsp', 'pantry'],
@@ -75,6 +75,18 @@ test('handles equivalent units, additive amounts, aliases and recipe-card note w
     ['2 apples / 3 pears', 'apples / 3 pears', '2', 'fruit'],
   ];
   for (const [input, name, amount, category] of examples) assert.deepEqual(parseRecipeIngredient(input), { name, amount, category }, input);
+});
+
+test('prefers provided metric equivalents in either order and in cooking notes', () => {
+  for (const input of ['600g/1.2 lb chicken', '1.2 lb / 600g chicken', '600g (1.2 lb) chicken', '1.2 lb (600g) chicken']) {
+    assert.deepEqual(parseRecipeIngredient(input), { name: 'chicken', amount: '600g', category: 'meat' }, input);
+  }
+  assert.equal(preferMetricMeasurements('Cut into 2.5cm / 1" pieces; use a 30cm/12" pan at 180°C / 350°F.'), 'Cut into 2.5cm pieces; use a 30cm pan at 180°C.');
+  assert.equal(preferMetricMeasurements('250ml / 1 cup water'), '250ml water');
+  assert.equal(preferMetricMeasurements('1/3 cup + 2 tbsp sugar'), '1/3 cup + 2 tbsp sugar');
+  assert.equal(preferMetricMeasurements('1/2 tsp salt'), '1/2 tsp salt');
+  assert.equal(preferMetricMeasurements('1 lb chicken'), '1 lb chicken');
+  assert.equal(preferMetricMeasurements('2 apples / 3 pears'), '2 apples / 3 pears');
 });
 
 test('keeps ingredient names concise while preserving long notes in instructions', () => {

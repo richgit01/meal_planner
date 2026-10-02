@@ -1,5 +1,26 @@
 type Ingredient = { name: string; amount: string; category: string };
 
+// Select the supplied metric equivalent; do not calculate ingredient conversions.
+export function preferMetricMeasurements(text: string): string {
+  const quantity = '(?:\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:\\.\\d+)?[¼½¾⅓⅔⅛⅜⅝⅞]?|[¼½¾⅓⅔⅛⅜⅝⅞])';
+  const dimensions = [
+    ['kilograms?|grams?|kg|g', 'pounds?|ounces?|lbs?|oz'],
+    ['millilit(?:er|re)s?|lit(?:er|re)s?|ml|l', 'fluid ounces?|fl\\.?\\s*oz|cups?'],
+    ['centimet(?:er|re)s?|millimet(?:er|re)s?|cm|mm', 'inches|inch|in|["″]'],
+    ['°?\\s*C', '°?\\s*F'],
+  ];
+  let result = text;
+  for (const [metricUnits, imperialUnits] of dimensions) {
+    const metric = `${quantity}\\s*(?:${metricUnits})(?![a-z])`;
+    const imperial = `${quantity}\\s*(?:${imperialUnits})(?![a-z])`;
+    result = result.replace(new RegExp(`(${metric})\\s*/\\s*(${imperial})`, 'gi'), '$1')
+      .replace(new RegExp(`(${imperial})\\s*/\\s*(${metric})`, 'gi'), '$2')
+      .replace(new RegExp(`(${metric})\\s*\\(\\s*${imperial}\\s*\\)`, 'gi'), '$1')
+      .replace(new RegExp(`(${imperial})\\s*\\(\\s*(${metric})\\s*\\)`, 'gi'), '$2');
+  }
+  return result;
+}
+
 // These are suggestions using the shopping list's existing categories, not a new taxonomy.
 function ingredientCategory(name: string): string {
   const primaryName = name.split('(')[0].trim();
@@ -21,7 +42,7 @@ function ingredientCategory(name: string): string {
 }
 
 export function parseRecipeIngredient(line: string): Ingredient {
-  const original = line.replace(/[\n|]/g, ' ').replace(/\s+/g, ' ').trim();
+  const original = preferMetricMeasurements(line).replace(/[\n|]/g, ' ').replace(/\s+/g, ' ').trim();
   const quantity = '(?:\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:\\.\\d+)?[¼½¾⅓⅔⅛⅜⅝⅞]?|[¼½¾⅓⅔⅛⅜⅝⅞])';
   const unit = 'cups?|tablespoons?|teaspoons?|tbsp|tsp|grams?|kilograms?|g|kg|millilit(?:er|re)s?|lit(?:er|re)s?|ml|l|ounces?|oz|pounds?|lbs?|cloves?|slices?|cans?|tins?';
   const measure = new RegExp(`^(${quantity}(?:\\s*[-–]\\s*${quantity})?)(?:\\s*(${unit})\\.?)?(?=\\s|/|\\+|$)`, 'i');
