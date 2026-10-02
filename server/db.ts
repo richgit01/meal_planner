@@ -41,7 +41,7 @@ pool.on('error', (err) => {
     console.log('🔌 Initial database connection test successful');
     client.release();
   } catch (error) {
-    console.error('❌ Initial database connection failed:', error.message);
+    console.error('❌ Initial database connection failed:', error instanceof Error ? error.message : String(error));
     console.error('Full error:', error);
   }
 })();

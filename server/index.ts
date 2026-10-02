@@ -7,7 +7,7 @@ async function testConnection() {
     const rows = await db.select().from(meals).limit(6);
     console.log('✅ Database connected! Sample meals:', rows);
   } catch (error) {
-    console.warn('⚠️ Database connection test failed, but app will continue:', error.message);
+    console.warn('⚠️ Database connection test failed, but app will continue:', error instanceof Error ? error.message : String(error));
     console.log('This is expected if the database hasn\'t been seeded yet.');
   }
 }
@@ -71,7 +71,7 @@ app.get("/health", (_req, res) => {
   try {
     await seedDatabase();
   } catch (error) {
-    console.error("Warning: Database seeding failed, but continuing with app startup:", error.message);
+    console.error("Warning: Database seeding failed, but continuing with app startup:", error instanceof Error ? error.message : String(error));
     console.log("The app will still function, but may not have initial data loaded.");
   }
 

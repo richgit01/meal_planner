@@ -33,4 +33,4 @@ Tests use fixture HTML, mocked network requests, and an isolated Express preview
 
 Manual browser checks can use an isolated app with in-memory meal endpoints. Before testing against the normal app, remember that **Save Meal writes to the configured database**.
 
-The repository currently has pre-existing TypeScript errors in admin CSV exception handling and database/meal-plan code. These are separate from the importer. No migrations or new environment variables are required.
+No migrations or new environment variables are required. Shared meal-plan validation is also covered by `npx tsx --test shared/schema.test.ts`.

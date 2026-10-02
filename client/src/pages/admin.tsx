@@ -436,7 +436,7 @@ export default function Admin() {
             };
           } catch (error) {
             console.error(`Error parsing CSV row ${index + 2}:`, error);
-            throw new Error(`Error parsing row ${index + 2}: ${error.message}`);
+            throw new Error(`Error parsing row ${index + 2}: ${error instanceof Error ? error.message : String(error)}`);
           }
         });
 
@@ -447,7 +447,7 @@ export default function Admin() {
         console.error('CSV parsing error:', error);
         toast({ 
           title: "CSV Import Failed", 
-          description: error.message || "Invalid CSV format",
+          description: error instanceof Error ? error.message : "Invalid CSV format",
           variant: "destructive" 
         });
       }

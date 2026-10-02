@@ -321,8 +321,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       // 3) Resolve selected meals for the week
       const selectedMeals = (plan.meals as Array<{ day: string; mealId: string | null }>)
         .filter(d => d.mealId)
-        .map(d => mealsRows.find((m: any) => m.id === d.mealId))
-        .filter((m: any) => m && m.ingredients);
+        .map(d => mealsRows.find(m => m.id === d.mealId))
+        .filter((m): m is NonNullable<typeof m> => Boolean(m && m.ingredients));
 
       // 4) Aggregate ingredients by name (merge quantities as strings)
       type IngIn = { name?: string; quantity?: string; amount?: string; category?: string };

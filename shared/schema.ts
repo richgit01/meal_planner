@@ -38,7 +38,9 @@ export const insertMealSchema = createInsertSchema(meals, {
   id: true,
 });
 
-export const insertMealPlanSchema = createInsertSchema(mealPlans).omit({
+export const insertMealPlanSchema = createInsertSchema(mealPlans, {
+  meals: z.array(z.object({ day: z.string(), mealId: z.string().nullable() })).optional().default([]),
+}).omit({
   id: true,
 });
 
