@@ -10,9 +10,10 @@ The importer reads [Schema.org Recipe](https://schema.org/Recipe) JSON-LD metada
 
 - Name, description, image, cook time, ingredients, and instructions map to the existing meal fields.
 - ISO cook durations become minutes. Total time is not silently substituted for cook time.
-- Clear leading ingredient quantities and common units are separated into amount and name. Ambiguous quantities remain in the original text for review. Ingredient categories default to `other`.
+- Leading quantities, fractions, ranges, and common units (including compact metric amounts such as `40g`) are separated into amount and name. Simple preparation wording is shortened; for example, `40g piece of ginger peeled and finely grated` becomes `ginger grated | 40g | vegetables`. Ambiguous package quantities remain in the original text for review. Shopping categories are suggested from recognizable ingredients; mixed or unknown categories remain `other`.
 - Difficulty defaults to `Easy`. Unclear or missing serving counts default to `4`, with a warning.
 - Missing required fields must be completed in the form. Utensils start empty.
+- Imported image URLs have a preview in the form and a message if loading fails. Images remain linked to the original host, rather than copied into storage. You can replace the URL before saving.
 - The source link is available during review. Source URLs, nutrition, and recipe categories are not persisted because the current model has no corresponding fields.
 
 The preview endpoint (`POST /api/recipes/import-preview`, body `{ "url": "https://..." }`) has no database dependency. It returns `{ draft, sourceUrl, warnings }`. Fetching allows only public destinations on standard HTTP(S) ports, checks every redirect, pins the resolved IP, limits redirects to three, limits HTML to 2 MiB, and applies a 15-second request deadline. Compressed responses are not accepted. At most three extractions run concurrently per server process.

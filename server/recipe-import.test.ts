@@ -6,6 +6,7 @@ import { PassThrough } from 'node:stream';
 import type { request as httpRequest } from 'node:http';
 import { extractRecipe, fetchRecipePage, isPublicAddress, registerRecipeImportRoute, validateRecipeUrl } from './recipe-import';
 import { insertMealSchema } from '../shared/schema';
+import { parseRecipeIngredient } from './recipe-ingredients';
 
 const page = (recipe: unknown) => `<html><script type="application/ld+json">${JSON.stringify(recipe)}</script></html>`;
 const recipe = {
@@ -25,8 +26,8 @@ test('extracts graph recipes into the existing schema without losing ingredient 
   assert.equal(preview.draft.servings, 4);
   assert.equal(preview.draft.image, 'https://recipes.example/meal.jpg');
   assert.deepEqual(preview.draft.ingredients, [
-    { name: 'rice', amount: '2 cups', category: 'other' },
-    { name: 'chicken', amount: '500 g', category: 'other' },
+    { name: 'rice', amount: '2 cups', category: 'grains' },
+    { name: 'chicken', amount: '500 g', category: 'meat' },
   ]);
   assert.deepEqual(preview.draft.instructions, ['Wash the rice.', 'Cook chicken & rice.']);
   assert.deepEqual(insertMealSchema.parse(preview.draft), preview.draft);
@@ -34,12 +35,31 @@ test('extracts graph recipes into the existing schema without losing ingredient 
   assert.equal('sourceUrl' in preview.draft, false);
 });
 
-test('maps clear quantities but preserves ranges, package sizes, and unknown amounts', () => {
+test('maps clear quantities and ranges but preserves package sizes and unknown amounts', () => {
   const preview = extractRecipe(page({ ...recipe, recipeIngredient: ['1 1/2 cups flour', '½ tsp salt', '2 eggs', '2-3 carrots', '1 (400 g) can tomatoes', 'Salt to taste'] }), 'https://recipes.example');
   assert.deepEqual(preview.draft.ingredients.map(({ name, amount }) => [name, amount]), [
-    ['flour', '1 1/2 cups'], ['salt', '½ tsp'], ['eggs', '2'], ['2-3 carrots', ''], ['1 (400 g) can tomatoes', ''], ['Salt to taste', ''],
+    ['flour', '1 1/2 cups'], ['salt', '½ tsp'], ['eggs', '2'], ['carrots', '2-3'], ['1 (400 g) can tomatoes', ''], ['Salt to taste', ''],
   ]);
   assert.ok(preview.warnings.some(warning => warning.includes('could not be separated')));
+});
+
+test('normalizes BBC-style compact amounts, preparation, and shopping categories', () => {
+  assert.deepEqual(parseRecipeIngredient('40g piece of ginger peeled and finely grated'), {
+    name: 'ginger grated', amount: '40g', category: 'vegetables',
+  });
+  assert.deepEqual(parseRecipeIngredient('4 garlic cloves finely chopped'), {
+    name: 'garlic chopped', amount: '4 cloves', category: 'vegetables',
+  });
+  assert.deepEqual(parseRecipeIngredient('½-1 lemon, juiced'), {
+    name: 'lemon, juiced', amount: '½-1', category: 'fruit',
+  });
+  assert.deepEqual(parseRecipeIngredient('500g chicken breast'), {
+    name: 'chicken breast', amount: '500g', category: 'meat',
+  });
+  assert.equal(parseRecipeIngredient('1 tbsp sunflower, vegetable, rice bran or rapeseed oil').category, 'pantry');
+  assert.equal(parseRecipeIngredient('cooked rice and steamed broccoli, to serve (optional)').category, 'other');
+  assert.equal(parseRecipeIngredient('40ginger').amount, '');
+  assert.deepEqual(parseRecipeIngredient('2 cups unusual ingredient'), { name: 'unusual ingredient', amount: '2 cups', category: 'other' });
 });
 
 test('supports arrays, type arrays, HTML steps and skips malformed unrelated metadata', () => {

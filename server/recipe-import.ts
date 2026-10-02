@@ -8,6 +8,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { insertMealSchema } from "@shared/schema";
 import type { RecipeImportPreview } from "@shared/recipe-import";
+import { parseRecipeIngredient } from "./recipe-ingredients";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 15000;
@@ -158,13 +159,7 @@ export function extractRecipe(html: string, sourceUrl: string): RecipeImportPrev
     return steps(value.text || value.name);
   };
   const ingredientLines = steps(recipe.recipeIngredient);
-  // Split only clear leading quantities; keep ambiguous lines intact for review.
-  const ingredients = ingredientLines.map(line => {
-    const original = line.replace(/[\n|]/g, ' ').trim();
-    const quantity = /^(\d+(?:\.\d+)?(?:\s+\d+\/\d+|[¼½¾⅓⅔⅛⅜⅝⅞])?|\d+\/\d+|[¼½¾⅓⅔⅛⅜⅝⅞])\s+(?:(cups?|tablespoons?|teaspoons?|tbsp|tsp|grams?|kilograms?|g|kg|millilit(?:er|re)s?|lit(?:er|re)s?|ml|l|ounces?|oz|pounds?|lbs?|cloves?|slices?|cans?|tins?)\.?\s+)?(.+)$/i.exec(original);
-    if (!quantity || /^[\d(/–-]/.test(quantity[3])) return { name: original, amount: '', category: 'other' };
-    return { name: quantity[3].trim(), amount: [quantity[1], quantity[2]].filter(Boolean).join(' '), category: 'other' };
-  });
+  const ingredients = ingredientLines.map(parseRecipeIngredient);
   const instructions = steps(recipe.recipeInstructions);
   const duration = clean(recipe.cookTime);
   const match = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i.exec(duration);
@@ -193,7 +188,7 @@ export function extractRecipe(html: string, sourceUrl: string): RecipeImportPrev
   for (const [label, value] of [['name', draft.name], ['description', draft.description], ['cook time', cookTime], ['image', draft.image], ['ingredients', ingredientLines.length], ['instructions', instructions.length]] as const) {
     if (!value) warnings.push(`No ${label} was found. Complete it in the form if required.`);
   }
-  warnings.push("Review ingredient amounts and shopping categories; categories default to other.");
+  warnings.push("Review ingredient amounts and suggested shopping categories; uncertain categories remain other.");
   if (ingredients.some(ingredient => !ingredient.amount)) warnings.push("Some quantities could not be separated and remain in the original ingredient text. Blank amounts will use 1 unit when saved; review these lines.");
   warnings.push("Source URL and nutrition are not stored in the current meal model.");
   return { draft, sourceUrl, warnings };

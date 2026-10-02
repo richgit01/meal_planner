@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { insertMealSchema, type Meal, type InsertMeal } from "@shared/schema";
 import { z } from "zod";
 import type { RecipeImportPreview } from "@shared/recipe-import";
+import { RecipeImagePreview } from "@/components/recipe-image-preview";
 
 const mealFormSchema = insertMealSchema.extend({
   name: z.string().trim().min(1, "Name is required"),
@@ -634,6 +635,7 @@ export default function Admin() {
                             <Input placeholder="https://..." {...field} />
                           </FormControl>
                           <FormMessage />
+                          {importPreview && <RecipeImagePreview key={field.value} url={field.value} />}
                         </FormItem>
                       )}
                     />
