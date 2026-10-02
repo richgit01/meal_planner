@@ -5,11 +5,13 @@ import { db } from "./db";
 import { meals, mealPlans, cookedMeals } from "@shared/schema";
 import { insertMealPlanSchema, insertMealSchema, insertCookedMealSchema } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { registerRecipeImportRoute } from "./recipe-import";
 
 // Validate YYYY-MM-DD strings for weekStartDate
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function registerRoutes(app: Express): Promise<void> {
+  registerRecipeImportRoute(app);
   /* ============================= MEALS ============================= */
 
   app.get("/api/meals", async (_req, res) => {

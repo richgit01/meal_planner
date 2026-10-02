@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Edit, Trash2, Upload, Save, Download, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,10 +16,15 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { insertMealSchema, type Meal, type InsertMeal } from "@shared/schema";
 import { z } from "zod";
+import type { RecipeImportPreview } from "@shared/recipe-import";
 
 const mealFormSchema = insertMealSchema.extend({
-  ingredientsText: z.string().min(1, "Ingredients are required"),
-  instructionsText: z.string().min(1, "Instructions are required"),
+  name: z.string().trim().min(1, "Name is required"),
+  description: z.string().trim().min(1, "Description is required"),
+  cookTime: z.string().trim().min(1, "Cook time is required"),
+  servings: z.number().int().positive("Servings must be positive"),
+  ingredientsText: z.string().trim().min(1, "Ingredients are required"),
+  instructionsText: z.string().trim().min(1, "Instructions are required"),
   utensilsText: z.string().optional(),
 });
 
@@ -30,6 +35,9 @@ export default function Admin() {
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
   const [showMealDialog, setShowMealDialog] = useState(false);
   const [bulkImportText, setBulkImportText] = useState("");
+  const [showUrlDialog, setShowUrlDialog] = useState(false);
+  const [recipeUrl, setRecipeUrl] = useState("");
+  const [importPreview, setImportPreview] = useState<RecipeImportPreview | null>(null);
   const csvFileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: meals = [], isLoading } = useQuery<Meal[]>({
@@ -55,21 +63,19 @@ export default function Admin() {
     console.log("Closing dialog...");
     setShowMealDialog(false);
     setEditingMeal(null);
+    setImportPreview(null);
 
-    // Use setTimeout to ensure state updates properly
-    setTimeout(() => {
-      form.reset({
-        name: "",
-        description: "",
-        cookTime: "",
-        difficulty: "Easy",
-        servings: 4,
-        image: "",
-        ingredientsText: "",
-        instructionsText: "",
-        utensilsText: "",
-      });
-    }, 100);
+    form.reset({
+      name: "",
+      description: "",
+      cookTime: "",
+      difficulty: "Easy",
+      servings: 4,
+      image: "",
+      ingredientsText: "",
+      instructionsText: "",
+      utensilsText: "",
+    });
   };
 
   const createMealMutation = useMutation({
@@ -172,6 +178,32 @@ export default function Admin() {
     return utensils ? utensils.join('\n') : '';
   };
 
+  const urlImportMutation = useMutation({
+    mutationFn: async (url: string): Promise<RecipeImportPreview> => {
+      try {
+        const response = await apiRequest("POST", "/api/recipes/import-preview", { url });
+        return response.json();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not import this recipe.";
+        let detail = "Could not import this recipe. Check the URL or try another website.";
+        try { detail = JSON.parse(message.slice(message.indexOf("{"))).message || detail; } catch { /* Network failure. */ }
+        throw new Error(detail);
+      }
+    },
+    onSuccess: (preview) => {
+      setEditingMeal(null);
+      setImportPreview(preview);
+      form.reset({
+        ...preview.draft,
+        ingredientsText: formatIngredientsText(preview.draft.ingredients),
+        instructionsText: formatInstructionsText(preview.draft.instructions),
+        utensilsText: formatUtensilsText(preview.draft.utensils),
+      });
+      setShowUrlDialog(false);
+      setShowMealDialog(true);
+    },
+  });
+
   const onSubmit = (data: MealFormData) => {
     console.log("Form submitted with data:", data);
 
@@ -203,6 +235,7 @@ export default function Admin() {
   };
 
   const handleEdit = (meal: Meal) => {
+    setImportPreview(null);
     setEditingMeal(meal);
     form.reset({
       name: meal.name,
@@ -464,11 +497,37 @@ export default function Admin() {
 
         {/* Action Buttons */}
         <div className="space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2">
+          <Dialog open={showUrlDialog} onOpenChange={(open) => {
+            if (!urlImportMutation.isPending) setShowUrlDialog(open);
+          }}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => {
+                setRecipeUrl("");
+                urlImportMutation.reset();
+              }}>Import Recipe from URL</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Import Recipe from URL</DialogTitle></DialogHeader>
+              <DialogDescription>Extract a draft, then review it in the meal form. Nothing is saved until you click Save Meal.</DialogDescription>
+              <form className="space-y-4" onSubmit={(event) => {
+                event.preventDefault();
+                if (!urlImportMutation.isPending) urlImportMutation.mutate(recipeUrl.trim());
+              }}>
+                <Label htmlFor="recipe-url">Recipe URL</Label>
+                <Input id="recipe-url" type="url" required maxLength={2048} placeholder="https://..." value={recipeUrl}
+                  disabled={urlImportMutation.isPending} onChange={(event) => setRecipeUrl(event.target.value)} />
+                {urlImportMutation.error && <p role="alert" className="text-sm text-red-600">{urlImportMutation.error.message}</p>}
+                <Button type="submit" disabled={urlImportMutation.isPending || !recipeUrl.trim()}>
+                  {urlImportMutation.isPending ? "Extracting recipe..." : "Preview Recipe"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
           {/* Primary Action - Add Meal */}
-          <Dialog open={showMealDialog} onOpenChange={setShowMealDialog}>
+          <Dialog open={showMealDialog} onOpenChange={(open) => { if (open) setShowMealDialog(true); else handleCloseDialog(); }}>
             <DialogTrigger asChild>
               <Button 
-                onClick={() => { setEditingMeal(null); form.reset(); }}
+                onClick={() => { setEditingMeal(null); setImportPreview(null); form.reset(); }}
                 className="w-full sm:w-auto"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -479,6 +538,11 @@ export default function Admin() {
               <DialogHeader>
                 <DialogTitle>{editingMeal ? "Edit Meal" : "Add New Meal"}</DialogTitle>
               </DialogHeader>
+              {importPreview && <div className="rounded-md bg-blue-50 p-4 text-sm space-y-2">
+                <p className="font-medium">Imported draft — nothing has been saved.</p>
+                <a href={importPreview.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline break-all">View original recipe</a>
+                <ul className="list-disc pl-5 space-y-1">{importPreview.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+              </div>}
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -634,93 +698,7 @@ export default function Admin() {
                       Cancel
                     </Button>
                     <Button 
-                      type="button"
-                      onClick={async () => {
-                        console.log("Save button clicked");
-                        console.log("Current editing meal:", editingMeal);
-
-                        // Get current form values first
-                        const formData = form.getValues();
-                        console.log("Current form data:", formData);
-
-                        // Check for required fields manually since form.trigger() might be overly strict
-                        const requiredFieldsValid = 
-                          formData.name?.trim() && 
-                          formData.description?.trim() && 
-                          formData.cookTime?.trim() && 
-                          formData.ingredientsText?.trim() && 
-                          formData.instructionsText?.trim();
-
-                        if (!requiredFieldsValid) {
-                          console.log("Required fields missing");
-                          toast({
-                            title: "Validation Error",
-                            description: "Please fill in all required fields (name, description, cook time, ingredients, instructions).",
-                            variant: "destructive"
-                          });
-                          return;
-                        }
-
-                        console.log("✅ Basic validation passed")
-
-                        // Form data already retrieved above for validation
-
-                        // Parse and prepare data
-                        const ingredients = parseIngredientsText(formData.ingredientsText);
-                        const instructions = parseInstructionsText(formData.instructionsText);
-                        const utensils = parseUtensilsText(formData.utensilsText || "");
-                        console.log("Parsed ingredients:", ingredients);
-                        console.log("Parsed instructions:", instructions);
-                        console.log("Parsed utensils:", utensils);
-
-                        const mealData = {
-                          name: formData.name,
-                          description: formData.description,
-                          cookTime: formData.cookTime,
-                          difficulty: formData.difficulty,
-                          servings: formData.servings,
-                          image: formData.image,
-                          ingredients,
-                          instructions,
-                          utensils,
-                        };
-                        console.log("Final meal data to send:", mealData);
-
-                        try {
-                          let result;
-                          if (editingMeal) {
-                            console.log("Updating existing meal with ID:", editingMeal.id);
-                            console.log("Sending PUT request to:", `/api/meals/${editingMeal.id}`);
-                            result = await updateMealMutation.mutateAsync({ id: editingMeal.id, ...mealData });
-                            console.log("Update result:", result);
-                          } else {
-                            console.log("Creating new meal");
-                            console.log("Sending POST request to: /api/meals");
-                            result = await createMealMutation.mutateAsync(mealData);
-                            console.log("Create result:", result);
-                          }
-
-                          console.log("✅ API call successful, result:", result);
-                          // Success - mutations have onSuccess handlers that will close dialog
-
-                        } catch (error) {
-                          console.error("❌ Save operation failed:", error);
-                          console.error("Error details:", {
-                            message: error?.message,
-                            status: error?.status,
-                            response: error?.response
-                          });
-
-                          toast({
-                            title: "Save Failed",
-                            description: `Failed to ${editingMeal ? 'update' : 'create'} meal: ${error?.message || 'Unknown error'}`,
-                            variant: "destructive"
-                          });
-
-                          // Don't close dialog on error so user can retry
-                          return;
-                        }
-                      }}
+                      type="submit"
                       disabled={createMealMutation.isPending || updateMealMutation.isPending}
                     >
                       <Save className="h-4 w-4 mr-2" />
