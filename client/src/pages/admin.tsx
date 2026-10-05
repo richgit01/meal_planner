@@ -36,6 +36,7 @@ export default function Admin() {
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
   const [showMealDialog, setShowMealDialog] = useState(false);
   const [bulkImportText, setBulkImportText] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [recipeUrl, setRecipeUrl] = useState("");
   const [importPreview, setImportPreview] = useState<RecipeImportPreview | null>(null);
@@ -322,7 +323,9 @@ export default function Admin() {
   };
 
   // Group meals by protein type
-  const groupedMeals = meals.reduce((groups, meal) => {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredMeals = meals.filter(meal => meal.name.toLowerCase().includes(normalizedSearch));
+  const groupedMeals = filteredMeals.reduce((groups, meal) => {
     const proteinType = getProteinType(meal);
     if (!groups[proteinType]) {
       groups[proteinType] = [];
@@ -749,7 +752,23 @@ export default function Admin() {
         </div>
       </div>
 
+      <div className="mb-6">
+        <Input
+          type="search"
+          aria-label="Search meals by title"
+          value={searchTerm}
+          onChange={event => setSearchTerm(event.target.value)}
+          placeholder="Search meals by title..."
+          className="h-9 w-full sm:max-w-md"
+        />
+      </div>
+
       <div className="space-y-8">
+        {sortedGroups.length === 0 && (
+          <p className="text-sm text-slate-500" role="status">
+            {normalizedSearch ? "No meals match your search." : "No meals have been added yet."}
+          </p>
+        )}
         {sortedGroups.map((proteinType) => (
           <div key={proteinType}>
             <h3 className="text-xl font-semibold text-slate-700 mb-4 border-b border-slate-200 pb-2">
