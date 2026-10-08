@@ -1,0 +1,44 @@
+name: Supabase database query
+
+on:
+  schedule:
+    - cron: '17 */6 * * *' # Every six hours, UTC; avoid the busy start of the hour.
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Query one meal
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_SECRET_KEY" ]]; then
+            echo "::error::Configure SUPABASE_URL and SUPABASE_SECRET_KEY repository secrets."
+            echo "Supabase query failed: missing secrets." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # GET executes a SELECT through the Data API; discard the returned meal ID.
+          if status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 30 --proto '=https' \
+            --header "apikey: $SUPABASE_SECRET_KEY" \
+            --header 'Accept: application/json' \
+            "${SUPABASE_URL%/}/rest/v1/meals?select=id&limit=1"); then
+            if [[ "$status" == "200" ]]; then
+              echo "Supabase query succeeded (HTTP $status)."
+              echo "Supabase query succeeded (HTTP $status); selected at most one meal ID." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::Supabase query failed (HTTP $status)."
+            echo "Supabase query failed (HTTP $status)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Supabase query failed: connection or timeout error (HTTP $status)."
+            echo "Supabase query failed: connection or timeout error (HTTP $status)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 1
